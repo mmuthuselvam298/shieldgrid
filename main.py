@@ -12,16 +12,24 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from paddleocr import PaddleOCR
 from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer
+from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from fastapi.staticfiles import StaticFiles
 
-# ✅ FIX 1: Defer OCR initialization to prevent boot-time blocking
+# =====================================================================
+# ✅ DEFERRED ENGINES SETUP (Lazy Loading to bypass boot timeouts)
+# =====================================================================
 ocr = None
+analyzer = None
+anonymizer = AnonymizerEngine()  # Lightweight engine; safe to remain global
+
+# ✅ Staging array to collect custom patterns without triggering spaCy instantiation
+recognizers = []
 
 def extract_text_from_file(filename, content):
-    global ocr
+    global ocr  # Access the deferred global variable
     filename = filename.lower()
     temp_suffix = uuid.uuid4().hex
     temp_dir = tempfile.gettempdir()
@@ -61,7 +69,7 @@ def extract_text_from_file(filename, content):
             with open(temp_image, "wb") as f:
                 f.write(content)
 
-            # ✅ FIX 2: Instantiate PaddleOCR only when an image is received
+            # ✅ Initialize PaddleOCR only when an image is processed
             if ocr is None:
                 ocr = PaddleOCR(
                     use_angle_cls=True,
@@ -98,13 +106,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-analyzer = AnalyzerEngine()
-anonymizer = AnonymizerEngine()
-
+# ✅ Collects rules without instantiating the memory-heavy analyzer engine at boot
 def add_recognizer(entity, regex, score=0.9):
     pattern = Pattern(name=entity.lower(), regex=regex, score=score)
     recognizer = PatternRecognizer(supported_entity=entity, patterns=[pattern])
-    analyzer.registry.add_recognizer(recognizer)
+    recognizers.append(recognizer)
 
 GENERAL_ENTITIES = {"PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "LOCATION", "PASSPORT_NUMBER"}
 FINANCIAL_ENTITIES = {
@@ -183,7 +189,7 @@ add_recognizer("DIAGNOSIS_CODE", r"\b[A-Z][0-9]{2}(?:\.[0-9A-Z]{1,4})?\b")
 add_recognizer("WARD_NUMBER", r"\bWard(?:\s*No\.?)?[- ]?\d+\b", score=0.9)
 add_recognizer("ROOM_NUMBER", r"\bRoom(?:\s*No\.?)?[- ]?\d+\b", score=0.9)
 
-# --- FIXED Healthcare Custom Recognizers ---
+# --- Healthcare Custom Recognizers ---
 add_recognizer("BLOOD_GROUP", r"\b(?:A|B|AB|O)[+-]")
 add_recognizer("PATIENT_NAME", r"(?<=Patient Name:\s)[A-Z][a-zA-Z'.]*(?:\s[A-Z][a-zA-Z'.]*)*", score=0.95)
 add_recognizer("DOCTOR_NAME", r"(?<=Consultant:\s)[A-Z][a-zA-Z'.]*(?:\s[A-Z][a-zA-Z'.]*)*", score=0.95)
@@ -206,6 +212,7 @@ class DownloadRequest(BaseModel):
     entity_summary: dict = {}
 
 def redact_text(text, compliance):
+    global analyzer  # Access the deferred global variable
     compliance = compliance.lower()
     address_block_pattern = (
         r"(?is)"
@@ -224,6 +231,19 @@ def redact_text(text, compliance):
         r"\1\nCustomer ID: \2",
         text_for_presidio
     )
+
+    # ✅ Lazily build NLP engine, spawn analyzer, and register stored pattern rules once
+    if analyzer is None:
+        configuration = {
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}]
+        }
+        provider = NlpEngineProvider(nlp_configuration=configuration)
+        nlp_engine = provider.create_engine()
+        analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
+        
+        for recognizer in recognizers:
+            analyzer.registry.add_recognizer(recognizer)
 
     results = analyzer.analyze(text=text_for_presidio, language="en")
     allowed_entities = COMPLIANCE_MAP.get(compliance, GENERAL_ENTITIES)
@@ -283,7 +303,6 @@ def remove_generated_file(path: str):
 
 # --- Primary Application Gateway Endpoints ---
 
-# ✅ FIX 3: Serve landing page reliably via HTMLResponse explicitly avoiding static resource locks
 @app.get("/", response_class=HTMLResponse)
 def home():
     """Serves the front-end user interface dashboard."""
