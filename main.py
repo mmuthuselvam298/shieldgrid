@@ -8,7 +8,7 @@ import pdfplumber
 from docx import Document
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from paddleocr import PaddleOCR
 from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer
@@ -17,12 +17,11 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from fastapi.staticfiles import StaticFiles
 
-ocr = PaddleOCR(
-    use_angle_cls=True,
-    lang="en"
-)
+# ✅ FIX 1: Defer OCR initialization to prevent boot-time blocking
+ocr = None
 
 def extract_text_from_file(filename, content):
+    global ocr
     filename = filename.lower()
     temp_suffix = uuid.uuid4().hex
     temp_dir = tempfile.gettempdir()
@@ -61,6 +60,13 @@ def extract_text_from_file(filename, content):
         if filename.endswith((".jpg", ".jpeg", ".png")):
             with open(temp_image, "wb") as f:
                 f.write(content)
+
+            # ✅ FIX 2: Instantiate PaddleOCR only when an image is received
+            if ocr is None:
+                ocr = PaddleOCR(
+                    use_angle_cls=True,
+                    lang="en"
+                )
 
             result = ocr.ocr(temp_image)
             text = ""
@@ -277,10 +283,12 @@ def remove_generated_file(path: str):
 
 # --- Primary Application Gateway Endpoints ---
 
-@app.get("/")
+# ✅ FIX 3: Serve landing page reliably via HTMLResponse explicitly avoiding static resource locks
+@app.get("/", response_class=HTMLResponse)
 def home():
     """Serves the front-end user interface dashboard."""
-    return FileResponse("templates/index.html")
+    with open("templates/index.html", "r", encoding="utf-8") as f:
+        return f.read()
 
 @app.get("/health")
 def health_check():
