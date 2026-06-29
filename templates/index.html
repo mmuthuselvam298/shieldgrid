@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Compliance PII Detection & Redaction System</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="ambient-cyber-grid" aria-hidden="true"></div>
+    <div class="ambient-aurora" aria-hidden="true"></div>
+    <div class="ambient-scanlines" aria-hidden="true"></div>
+    <div id="toastContainer" class="toast-container"></div>
+
+    <main class="app-shell animate-fade-in">
+        <header class="hero">
+            <nav class="topbar" aria-label="System Connectivity Console">
+                <a class="brand" href="#">
+                    <span class="brand-mark" aria-hidden="true">SG</span>
+                    <span>
+                        <strong>ShieldGrid</strong>
+                        <small>Secured Corporate Analytics</small>
+                    </span>
+                </a>
+                <div class="topbar-actions">
+                    <span class="status-pill" id="apiStatus">Establishing Link</span>
+                    <button class="theme-toggle-btn" type="button" onclick="toggleTheme()" id="themeToggle">Light Mode</button>
+                </div>
+            </nav>
+
+            <section class="hero-grid">
+                <div class="hero-copy">
+                    <p class="eyebrow">Enterprise Redaction Node</p>
+                    <h1>Inspect. Detect. Redact.</h1>
+                    <p class="hero-text">An advanced data data sanitization platform implementing strict context segmentation models across unstructured storage files.</p>
+                    
+                    <div class="hero-timeline" aria-label="Processing Execution Tree">
+                        <div class="timeline-step" id="step-ocr"><i></i><span>Content Extraction</span></div>
+                        <div class="timeline-step" id="step-recognize"><i></i><span>Presidio Analysis</span></div>
+                        <div class="timeline-step" id="step-filter"><i></i><span>Policy Evaluation</span></div>
+                        <div class="timeline-step" id="step-redact"><i></i><span>Token Redaction</span></div>
+                    </div>
+                </div>
+
+                <div class="signal-panel" aria-label="Real-time Evaluation Matrix">
+                    <div class="signal-header">
+                        <span>Risk Threat Index</span>
+                        <strong id="matrixMode">General Mode</strong>
+                    </div>
+                    
+                    <div class="gauge-container">
+                        <svg class="risk-gauge" viewBox="0 0 100 100">
+                            <circle class="gauge-bg" cx="50" cy="50" r="42"></circle>
+                            <circle class="gauge-fill" id="gaugeFill" cx="50" cy="50" r="42"></circle>
+                        </svg>
+                        <div class="gauge-label">
+                            <span id="gaugeValue">0%</span>
+                            <small id="gaugeRiskText">CLEAN</small>
+                        </div>
+                    </div>
+
+                    <div class="signal-stats">
+                        <div><span>Risk Factor</span><strong id="statRisk">Minimal</strong></div>
+                        <div><span>Isolations</span><strong id="statEntities">0</strong></div>
+                        <div><span>Confidence</span><strong id="statConfidence">100%</strong></div>
+                    </div>
+                </div>
+            </section>
+        </header>
+
+        <section class="dashboard">
+            <aside class="control-rail">
+                <section class="panel compliance-panel">
+                    <div class="section-heading">
+                        <p>Compliance Lens</p>
+                        <span>Policy definitions</span>
+                    </div>
+
+                    <label class="profile-card active">
+                        <input type="radio" name="complianceProfile" value="general" checked onchange="updateProfileMetrics()" />
+                        <span>
+                            <strong>General Profile</strong>
+                            <small>Demographics, contact coordinates, passports</small>
+                        </span>
+                    </label>
+                    <label class="profile-card">
+                        <input type="radio" name="complianceProfile" value="finance" onchange="updateProfileMetrics()" />
+                        <span>
+                            <strong>Finance Profile</strong>
+                            <small>Identities, account books, cards, transactions</small>
+                        </span>
+                    </label>
+                    <label class="profile-card">
+                        <input type="radio" name="complianceProfile" value="healthcare" onchange="updateProfileMetrics()" />
+                        <span>
+                            <strong>Healthcare Profile</strong>
+                            <small>Patient profiles, MRN indices, ICD-10 data</small>
+                        </span>
+                    </label>
+                </section>
+
+                <section class="panel info-panel">
+                    <div class="section-heading">
+                        <p id="panelTitle">General Mode</p>
+                        <span>Active target rulesets</span>
+                    </div>
+                    <ul id="panelList"></ul>
+                </section>
+            </aside>
+
+            <section class="workspace">
+                <section class="panel input-panel">
+                    <div class="section-heading">
+                        <p>Direct Redact</p>
+                        <span>Unstructured document intake</span>
+                    </div>
+
+                    <div class="input-grid">
+                        <div class="text-zone">
+                            <label for="inputText">Raw Content Stream</label>
+                            <textarea id="inputText" rows="12" placeholder="Paste unstructured corporate log or document data here..."></textarea>
+                            <div class="action-row">
+                                <button class="primary-btn" id="analyzeTextBtn" type="button" onclick="analyzeText(event)">Analyze Stream</button>
+                                <button class="secondary-btn clear-btn" type="button" onclick="clearAll()">Reset Node</button>
+                            </div>
+                        </div>
+
+                        <div class="upload-zone">
+                            <label>Binary Extraction Dropzone</label>
+                            <div class="dropzone-area" id="dropzone" onclick="triggerFileBrowse()">
+                                <input type="file" id="fileInput" accept=".txt,.pdf,.docx,.jpg,.jpeg,.png" style="display: none;" />
+                                <strong>Drop files here or browse</strong>
+                                <span>Txt, PDF, Docx, Image Assets</span>
+                            </div>
+                            <p id="selectedFile" class="selected-file"></p>
+                            <button class="primary-btn wide" id="analyzeFileBtn" type="button" onclick="analyzeFile(event)" disabled>Extract & Scan</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="progress-container" id="loadingProgress">
+                    <div class="radar-box">
+                        <div class="radar-line"></div>
+                    </div>
+                    <div class="progress-bar-wrapper">
+                        <div class="progress-bar-fill" id="progressBarFill"></div>
+                    </div>
+                    <div class="progress-status-text" id="progressStatus">Awaiting intake data transmission...</div>
+                </section>
+
+                <section class="summary-grid">
+                    <div class="summary-card" id="summaryCard"></div>
+                    
+                    <div class="chart-panel" id="chartPanel">
+                        <div class="section-heading">
+                            <p>Entity Category Allocation</p>
+                            <span>Relative distribution metrics</span>
+                        </div>
+                        <div class="chart-content">
+                            <div class="donut-chart" id="donutChartContainer">
+                                <div class="donut-hole">
+                                    <span id="chartTotalValue">0</span>
+                                    <small>Total</small>
+                                </div>
+                            </div>
+                            <div class="chart-legend" id="chartLegendContainer"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="metrics-ledger" id="metricsLedger"></section>
+
+                <section class="panel results-panel">
+                    <div class="results-header">
+                        <div class="section-heading">
+                            <p>Sanitized Output Stream</p>
+                            <span>Anonymized data view</span>
+                        </div>
+                        <div class="search-wrapper" id="searchWrapper">
+                            <input type="search" id="searchOutputInput" placeholder="Query buffer data..." oninput="executeOutputSearch()" />
+                            <span id="searchMatchCount"></span>
+                        </div>
+                    </div>
+
+                    <pre id="output" class="empty-state-output">No active sanitization session established. Gateway is clean.</pre>
+
+                    <div class="action-row" id="outputActions" style="display: none;">
+                        <button class="secondary-btn copy-btn" type="button" onclick="copyOutput()">搭 Copy Buffer</button>
+                    </div>
+
+                    <div class="download-box" id="downloadSection">
+                        <div>
+                            <h3>Export Compliance Ledger</h3>
+                            <div class="format-options">
+                                <label><input type="radio" name="exportFormat" value="txt" checked /> 塘 Plain Text</label>
+                                <label><input type="radio" name="exportFormat" value="docx" /> 統 MS Word</label>
+                                <label><input type="radio" name="exportFormat" value="pdf" /> 燈 PDF Ledger</label>
+                            </div>
+                        </div>
+                        <button class="success-btn" id="downloadBtn" type="button" onclick="downloadRedactedOutput(event)">筮Download</button>
+                        <div id="downloadStatus"></div>
+                    </div>
+                </section>
+
+                <section class="panel trace-panel">
+                    <div class="section-heading">
+                        <p>Transformation Trace Isolation Map</p>
+                        <span>Token extraction mapping records</span>
+                    </div>
+                    <div class="diff-container" id="diffContainer"></div>
+                </section>
+
+                <section class="panel entity-panel">
+                    <div class="section-heading">
+                        <p>Deduplicated Signature Matrix</p>
+                        <span>Aggregate risk metrics</span>
+                    </div>
+                    <table class="entity-table" id="entityTable">
+                        <thead>
+                            <tr>
+                                <th>Entity Class Identifier</th>
+                                <th>Frequency Count</th>
+                                <th>Peak Confidence Level</th>
+                            </tr>
+                        </thead>
+                        <tbody id="entityTableBody"></tbody>
+                    </table>
+                </section>
+            </section>
+        </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
