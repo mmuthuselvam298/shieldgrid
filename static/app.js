@@ -1,4 +1,5 @@
-const API_BASE = "http://127.0.0.1:8000";
+// ✅ FIX: Dynamically resolve host location to prevent connection refused exceptions in production
+const API_BASE = window.location.origin;
 
 const fileInput = document.getElementById("fileInput");
 const fileBtn = document.getElementById("analyzeFileBtn");
@@ -50,7 +51,7 @@ function selectedCompliance() {
 async function pingApi() {
   const status = document.getElementById("apiStatus");
   try {
-    const response = await fetch(`${API_BASE}/`);
+    const response = await fetch(`${API_BASE}/health`); // ✅ Point explicitly to your active lifecycle check mapping
     if (!response.ok) throw new Error();
     status.textContent = "SECURE LINK ONLINE";
     status.className = "status-pill online";
