@@ -128,18 +128,20 @@ HEALTHCARE_ENTITIES = {
     "BLOOD_GROUP", "DATE_OF_BIRTH", "PHONE_NUMBER", "EMAIL_ADDRESS", "PERSON",
     "LOCATION", "PASSPORT_NUMBER", "WARD_NUMBER", "ROOM_NUMBER", "OP_NUMBER",
     "IP_NUMBER", "UHID", "CLAIM_ID", "DISCHARGE_ID", "INSURANCE_MEMBER_ID", "ADMISSION_NUMBER",
-    "AGE", "GENDER", "HEIGHT", "WEIGHT", "INSURANCE_PROVIDER", "INSURANCE_POLICY", "RELATIONSHIP"
+    "AGE", "GENDER", "HEIGHT", "WEIGHT", "INSURANCE_PROVIDER", "INSURANCE_POLICY", "RELATIONSHIP",
+    "PAN_NUMBER", "AADHAAR_NUMBER"
 }
 
-# --- Financial Recognizers ---
-add_recognizer("PAN_NUMBER", r"\b[A-Z]{5}[0-9]{4}[A-Z]\b")
-add_recognizer("AADHAAR_NUMBER", r"\b\d{4}[- ]?\d{4}[- ]?\d{4}\b")
+# --- Production Optimized Financial & Government Identifier Recognizers ---
+add_recognizer("PAN_NUMBER", r"(?i)(?<=PAN(?:\s*Number|\s*No\.?)?:\s)[A-Z]{5}[0-9]{4}[A-Z]", score=0.98)
+add_recognizer("AADHAAR_NUMBER", r"(?i)(?<=Aadhaar(?:\s*Number|\s*No\.?)?:\s)\d{4}[- ]?\d{4}[- ]?\d{4}(?:[- ]?\d{4})?", score=0.98)
+add_recognizer("CVV", r"(?i)(?<=CVV[:\s])\d{3,4}\b", score=0.95)
+add_recognizer("BANK_ACCOUNT", r"(?i)(?<=Account(?: Number)?[:\s])\d{9,18}", score=0.95)
+
 add_recognizer("IFSC_CODE", r"\b[A-Z]{4}0[A-Z0-9]{6}\b")
 add_recognizer("PASSPORT_NUMBER", r"\b[A-Z][0-9]{7}\b")
 add_recognizer("CARD_NUMBER", r"\b(?:\d{4}[- ]?){3}\d{4}\b")
-add_recognizer("BANK_ACCOUNT", r"\b\d{11,18}\b")
 add_recognizer("CUSTOMER_ID", r"\bCUST\d{4,12}\b")
-add_recognizer("CVV", r"\b\d{3}\b")
 add_recognizer("CHEQUE_NUMBER", r"\b\d{6}\b")
 add_recognizer("LOAN_ACCOUNT", r"\bLOAN\d{6,15}\b")
 add_recognizer("TAX_ID", r"TAX\d+")
@@ -165,10 +167,10 @@ add_recognizer("CUSTOMER_NAME", r"(?<=Customer Name:\s)[A-Z][a-zA-Z'.]*(?:\s[A-Z
 add_recognizer("PERSON", r"(?<=my name is\s)[A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)*", score=0.95)
 add_recognizer("PERSON", r"(?<=Name:\s)[A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)*", score=0.95)
 
-# --- Healthcare Recognizers ---
+# --- Flexible Healthcare Recognizers ---
 add_recognizer("MEDICAL_RECORD_NUMBER", r"\bMRN-\d{5,10}\b")
 add_recognizer("HEALTH_ID", r"\bHID-\d{4}-\d{4}-\d{4}\b")
-add_recognizer("PATIENT_ID", r"(?<=Patient ID:\s)[A-Z0-9-]+", score=0.95)
+add_recognizer("PATIENT_ID", r"(?i)(?<=Patient\s*ID:\s)[A-Z0-9-]+", score=0.95)
 add_recognizer("HOSPITAL_ID", r"\bHOSP\d{5,10}\b")
 add_recognizer("DOCTOR_LICENSE", r"\bDOC\d{5,10}\b")
 add_recognizer("PRESCRIPTION_ID", r"\bRX\d{6,12}\b")
@@ -184,15 +186,17 @@ add_recognizer("CLAIM_ID", r"\bCLAIM[- ]?\d{5,15}\b", score=0.9)
 add_recognizer("DISCHARGE_ID", r"\bDIS\d{4,10}\b", score=0.9)
 add_recognizer("INSURANCE_MEMBER_ID", r"\bMEM\d{5,15}\b", score=0.9)
 add_recognizer("ADMISSION_NUMBER", r"\bADM\d{4,10}\b", score=0.9)
-add_recognizer("HOSPITAL_NAME", r"(?<=Hospital:\s)[^\n]+", score=0.95)
 add_recognizer("DIAGNOSIS_CODE", r"\b[A-Z][0-9]{2}(?:\.[0-9A-Z]{1,4})?\b")
 add_recognizer("WARD_NUMBER", r"\bWard(?:\s*No\.?)?[- ]?\d+\b", score=0.9)
 add_recognizer("ROOM_NUMBER", r"\bRoom(?:\s*No\.?)?[- ]?\d+\b", score=0.9)
 add_recognizer("BLOOD_GROUP", r"\b(?:A|B|AB|O)[+-]\b")
-add_recognizer("PATIENT_NAME", r"(?<=Patient Name:\s)[A-Z][a-zA-Z'.]*(?:\s[A-Z][a-zA-Z'.]*)*", score=0.95)
-add_recognizer("DOCTOR_NAME", r"(?<=(?:Doctor|Consultant):\s)(?:Dr\.\s)?[A-Z][a-zA-Z'.]*(?:\s[A-Z][a-zA-Z'.]*)*", score=0.95)
 
-# New demographic & insurance recognizers to catch remaining text indicators
+add_recognizer("PATIENT_NAME", r"(?i)(?<=(?:Patient\s*Name|Patient|Name):\s)[A-Z][a-zA-Z'.]*(?:\s[A-Z][a-zA-Z'.]*)*", score=0.95)
+add_recognizer("HOSPITAL_NAME", r"(?i)(?<=(?:Hospital\s*Name|Hospital):\s)[^\n]+", score=0.95)
+
+# Added version featuring expanded layout flexibility for title structures
+add_recognizer("DOCTOR_NAME", r"(?i)(?<=(?:Doctor|Consultant|Physician|Dr\.?):\s)(?:Dr\.\s)?[A-Z][a-zA-Z'.]*(?:\s[A-Z][a-zA-Z'.]*)*", score=0.95)
+
 add_recognizer("AGE", r"\bAge:\s*\d+(?:\s*years?)?\b", score=0.95)
 add_recognizer("GENDER", r"\bGender:\s*(?:Male|Female|Other)\b", score=0.95)
 add_recognizer("HEIGHT", r"\bHeight:\s*\d+\s*cm\b", score=0.9)
@@ -221,11 +225,13 @@ class DownloadRequest(BaseModel):
 def redact_text(text, compliance):
     global analyzer  # Access the deferred global variable
     compliance = compliance.lower()
+    
+    # Structural block boundary updates
     address_block_pattern = (
         r"(?is)"
         r"([A-Za-z ]*Address:\s*)"
         r"(.*?)"
-        r"(?=\n[A-Za-z][A-Za-z ]{2,30}:\s|\Z)"
+        r"(?=\n(?:[A-Za-z][A-Za-z ]{2,30}:|Aadhaar|PAN)(?:\s*Number|\s*No\.?)?:\s|\Z)"
     )
 
     address_matches = list(re.finditer(address_block_pattern, text))
@@ -251,8 +257,14 @@ def redact_text(text, compliance):
         for recognizer in recognizers:
             analyzer.registry.add_recognizer(recognizer)
 
-    results = analyzer.analyze(text=text_for_presidio, language="en")
     allowed_entities = COMPLIANCE_MAP.get(compliance, GENERAL_ENTITIES)
+
+    # Secure scanning metrics: Explicit entity restriction, zero debug printing to stdout logs
+    results = analyzer.analyze(
+        text=text_for_presidio, 
+        language="en",
+        entities=list(allowed_entities)
+    )
 
     filtered_results = [
         r
