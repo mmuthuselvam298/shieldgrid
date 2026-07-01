@@ -69,7 +69,6 @@ def extract_text_from_file(filename, content):
             with open(temp_image, "wb") as f:
                 f.write(content)
 
-            # ✅ Initialize PaddleOCR only when an image is processed
             if ocr is None:
                 ocr = PaddleOCR(
                     use_angle_cls=True,
@@ -106,13 +105,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Collects rules without instantiating the memory-heavy analyzer engine at boot
 def add_recognizer(entity, regex, score=0.9):
     pattern = Pattern(name=entity.lower(), regex=regex, score=score)
     recognizer = PatternRecognizer(supported_entity=entity, patterns=[pattern])
     recognizers.append(recognizer)
 
 GENERAL_ENTITIES = {"PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "LOCATION", "PASSPORT_NUMBER"}
+
 FINANCIAL_ENTITIES = {
     "PAN_NUMBER", "AADHAAR_NUMBER", "IFSC_CODE", "CARD_NUMBER", "TRANSACTION_ID",
     "BANK_ACCOUNT", "CUSTOMER_ID", "INSURANCE_POLICY", "CVV", "CHEQUE_NUMBER",
@@ -121,13 +120,15 @@ FINANCIAL_ENTITIES = {
     "UPI_ID", "DEMAT_ACCOUNT", "IBAN", "WALLET_ID", "MERCHANT_ID", "BRANCH_CODE",
     "DATE_OF_BIRTH", "PASSPORT_NUMBER",
 }
+
 HEALTHCARE_ENTITIES = {
     "MEDICAL_RECORD_NUMBER", "HEALTH_ID", "PATIENT_ID", "PATIENT_NAME", "DOCTOR_NAME",
     "DOCTOR_LICENSE", "HOSPITAL_ID", "HOSPITAL_NAME", "PRESCRIPTION_ID", "LAB_REPORT_ID",
     "HEALTH_INSURANCE", "DIAGNOSIS_CODE", "VACCINE_ID", "CLINICAL_TRIAL", "BED_NUMBER",
     "BLOOD_GROUP", "DATE_OF_BIRTH", "PHONE_NUMBER", "EMAIL_ADDRESS", "PERSON",
     "LOCATION", "PASSPORT_NUMBER", "WARD_NUMBER", "ROOM_NUMBER", "OP_NUMBER",
-    "IP_NUMBER", "UHID", "CLAIM_ID", "DISCHARGE_ID", "INSURANCE_MEMBER_ID", "ADMISSION_NUMBER"
+    "IP_NUMBER", "UHID", "CLAIM_ID", "DISCHARGE_ID", "INSURANCE_MEMBER_ID", "ADMISSION_NUMBER",
+    "AGE", "GENDER", "HEIGHT", "WEIGHT", "INSURANCE_PROVIDER", "INSURANCE_POLICY", "RELATIONSHIP"
 }
 
 # --- Financial Recognizers ---
@@ -138,7 +139,6 @@ add_recognizer("PASSPORT_NUMBER", r"\b[A-Z][0-9]{7}\b")
 add_recognizer("CARD_NUMBER", r"\b(?:\d{4}[- ]?){3}\d{4}\b")
 add_recognizer("BANK_ACCOUNT", r"\b\d{11,18}\b")
 add_recognizer("CUSTOMER_ID", r"\bCUST\d{4,12}\b")
-add_recognizer("INSURANCE_POLICY", r"\bINS\d{6,15}\b")
 add_recognizer("CVV", r"\b\d{3}\b")
 add_recognizer("CHEQUE_NUMBER", r"\b\d{6}\b")
 add_recognizer("LOAN_ACCOUNT", r"\bLOAN\d{6,15}\b")
@@ -168,7 +168,7 @@ add_recognizer("PERSON", r"(?<=Name:\s)[A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)*", sco
 # --- Healthcare Recognizers ---
 add_recognizer("MEDICAL_RECORD_NUMBER", r"\bMRN-\d{5,10}\b")
 add_recognizer("HEALTH_ID", r"\bHID-\d{4}-\d{4}-\d{4}\b")
-add_recognizer("PATIENT_ID", r"\bPAT\d{5,10}\b")
+add_recognizer("PATIENT_ID", r"(?<=Patient ID:\s)[A-Z0-9-]+", score=0.95)
 add_recognizer("HOSPITAL_ID", r"\bHOSP\d{5,10}\b")
 add_recognizer("DOCTOR_LICENSE", r"\bDOC\d{5,10}\b")
 add_recognizer("PRESCRIPTION_ID", r"\bRX\d{6,12}\b")
@@ -188,11 +188,18 @@ add_recognizer("HOSPITAL_NAME", r"(?<=Hospital:\s)[^\n]+", score=0.95)
 add_recognizer("DIAGNOSIS_CODE", r"\b[A-Z][0-9]{2}(?:\.[0-9A-Z]{1,4})?\b")
 add_recognizer("WARD_NUMBER", r"\bWard(?:\s*No\.?)?[- ]?\d+\b", score=0.9)
 add_recognizer("ROOM_NUMBER", r"\bRoom(?:\s*No\.?)?[- ]?\d+\b", score=0.9)
-
-# --- Healthcare Custom Recognizers ---
-add_recognizer("BLOOD_GROUP", r"\b(?:A|B|AB|O)[+-]")
+add_recognizer("BLOOD_GROUP", r"\b(?:A|B|AB|O)[+-]\b")
 add_recognizer("PATIENT_NAME", r"(?<=Patient Name:\s)[A-Z][a-zA-Z'.]*(?:\s[A-Z][a-zA-Z'.]*)*", score=0.95)
-add_recognizer("DOCTOR_NAME", r"(?<=Consultant:\s)[A-Z][a-zA-Z'.]*(?:\s[A-Z][a-zA-Z'.]*)*", score=0.95)
+add_recognizer("DOCTOR_NAME", r"(?<=(?:Doctor|Consultant):\s)(?:Dr\.\s)?[A-Z][a-zA-Z'.]*(?:\s[A-Z][a-zA-Z'.]*)*", score=0.95)
+
+# New demographic & insurance recognizers to catch remaining text indicators
+add_recognizer("AGE", r"\bAge:\s*\d+(?:\s*years?)?\b", score=0.95)
+add_recognizer("GENDER", r"\bGender:\s*(?:Male|Female|Other)\b", score=0.95)
+add_recognizer("HEIGHT", r"\bHeight:\s*\d+\s*cm\b", score=0.9)
+add_recognizer("WEIGHT", r"\bWeight:\s*\d+\s*kg\b", score=0.9)
+add_recognizer("INSURANCE_PROVIDER", r"(?<=Health Insurance Provider:\s)[^\n]+", score=0.95)
+add_recognizer("INSURANCE_POLICY", r"(?<=Policy Number:\s)[A-Z0-9]+", score=0.95)
+add_recognizer("RELATIONSHIP", r"\bRelationship:\s*[A-Za-z]+\b", score=0.85)
 
 COMPLIANCE_MAP = {
     "finance": FINANCIAL_ENTITIES | GENERAL_ENTITIES,
@@ -232,7 +239,6 @@ def redact_text(text, compliance):
         text_for_presidio
     )
 
-    # ✅ Lazily build NLP engine, spawn analyzer, and register stored pattern rules once
     if analyzer is None:
         configuration = {
             "nlp_engine_name": "spacy",
