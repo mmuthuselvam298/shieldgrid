@@ -4,26 +4,21 @@ import uuid
 import tempfile
 from datetime import datetime
 from xml.sax.saxutils import escape
-import pdfplumber
-from docx import Document
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
-from paddleocr import PaddleOCR
-from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer
-from presidio_analyzer.nlp_engine import NlpEngineProvider
-from presidio_anonymizer import AnonymizerEngine
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from fastapi.staticfiles import StaticFiles
 
 # =====================================================================
 # ✅ DEFERRED ENGINES SETUP (Lazy Loading to bypass boot timeouts)
 # =====================================================================
+# Heavy libraries (PaddleOCR, Presidio, pdfplumber, docx, reportlab) are
+# imported inside the functions that need them so the process starts
+# immediately and /health can respond without waiting for model downloads.
 ocr = None
 analyzer = None
-anonymizer = AnonymizerEngine()  # Lightweight engine; safe to remain global
+anonymizer = None  # Initialised on first use inside redact_text()
 
 # ✅ Staging array to collect custom patterns without triggering spaCy instantiation
 recognizers = []
@@ -42,6 +37,7 @@ def extract_text_from_file(filename, content):
             return content.decode("utf-8", errors="ignore")
 
         if filename.endswith(".docx"):
+            from docx import Document  # deferred heavy import
             with open(temp_docx, "wb") as f:
                 f.write(content)
 
@@ -53,6 +49,7 @@ def extract_text_from_file(filename, content):
             return text
 
         if filename.endswith(".pdf"):
+            import pdfplumber  # deferred heavy import
             with open(temp_pdf, "wb") as f:
                 f.write(content)
 
@@ -66,6 +63,7 @@ def extract_text_from_file(filename, content):
             return text
 
         if filename.endswith((".jpg", ".jpeg", ".png")):
+            from paddleocr import PaddleOCR  # deferred heavy import
             with open(temp_image, "wb") as f:
                 f.write(content)
 
@@ -106,6 +104,7 @@ app.add_middleware(
 )
 
 def add_recognizer(entity, regex, score=0.9):
+    from presidio_analyzer import Pattern, PatternRecognizer  # deferred heavy import
     pattern = Pattern(name=entity.lower(), regex=regex, score=score)
     recognizer = PatternRecognizer(supported_entity=entity, patterns=[pattern])
     recognizers.append(recognizer)
@@ -223,7 +222,7 @@ class DownloadRequest(BaseModel):
     entity_summary: dict = {}
 
 def redact_text(text, compliance):
-    global analyzer  # Access the deferred global variable
+    global analyzer, anonymizer  # Access the deferred global variables
     compliance = compliance.lower()
     
     # Structural block boundary updates
@@ -246,6 +245,8 @@ def redact_text(text, compliance):
     )
 
     if analyzer is None:
+        from presidio_analyzer import AnalyzerEngine  # deferred heavy import
+        from presidio_analyzer.nlp_engine import NlpEngineProvider  # deferred heavy import
         configuration = {
             "nlp_engine_name": "spacy",
             "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}]
@@ -253,7 +254,7 @@ def redact_text(text, compliance):
         provider = NlpEngineProvider(nlp_configuration=configuration)
         nlp_engine = provider.create_engine()
         analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
-        
+
         for recognizer in recognizers:
             analyzer.registry.add_recognizer(recognizer)
 
@@ -303,6 +304,10 @@ def redact_text(text, compliance):
         )
 
     detected_entities.sort(key=lambda x: x["entity"])
+    if anonymizer is None:
+        from presidio_anonymizer import AnonymizerEngine  # deferred heavy import
+        anonymizer = AnonymizerEngine()
+
     anonymized = anonymizer.anonymize(text=text_for_presidio, analyzer_results=filtered_results)
 
     return {
@@ -385,6 +390,7 @@ def download_redacted_file(request: DownloadRequest, background_tasks: Backgroun
         media = "text/plain"
 
     elif fmt == "docx":
+        from docx import Document  # deferred heavy import
         doc = Document()
         doc.add_heading(f"{compliance_mode} Compliance Report", level=1)
         doc.add_paragraph(f"Compliance Profile: {compliance_mode}")
@@ -406,6 +412,8 @@ def download_redacted_file(request: DownloadRequest, background_tasks: Backgroun
         media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
     elif fmt == "pdf":
+        from reportlab.lib.styles import getSampleStyleSheet  # deferred heavy import
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer  # deferred heavy import
         doc = SimpleDocTemplate(filepath)
         styles = getSampleStyleSheet()
         story = [
